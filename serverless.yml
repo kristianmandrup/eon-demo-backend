@@ -1,82 +1,81 @@
 service: eon-demo
 
-provider:
-  name: aws
-  runtime: node
-  stage: dev
-  region: eu-west-1
-  role: arn:aws:iam::799405497081:role/dev-lambda-execution-role
-
+# Create an optimized package for our functions
 package:
   individually: true
-  exclude:
-    - ".*/**"
-    - "*/**"
-    - "README.md"
+
+plugins:
+  - serverless-bundle # Package our functions with Webpack
+  - serverless-offline
+  - serverless-dotenv-plugin # Load .env as environment variables
+
+provider:
+  name: aws
+  runtime: nodejs10.x
+  stage: prod
+  region: us-east-1
+
+  # These environment variables are made available to our functions
+  # under process.env.
+  environment:
+    tableName: notes
+
+  # 'iamRoleStatements' defines the permission policy for the Lambda function.
+  # In this case Lambda functions are granted with permissions to access DynamoDB.
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource: "arn:aws:dynamodb:us-east-1:*:*"
 
 functions:
-  sg_receive_response:
-    handler: lambdas/sg_receive_response.handler
-    environment:
-      AWS_S3_BUCKET: sg-response-stub
+  # Defines an HTTP API endpoint that calls the main function in create.js
+  # - path: url path is /notes
+  # - method: POST request
+  # - cors: enabled CORS (Cross-Origin Resource Sharing) for browser cross
+  #     domain api call
+  # - authorizer: authenticate using the AWS IAM role
+  create:
+    handler: notes.create
     events:
       - http:
-          path: response
+          path: notes
           method: post
-    package:
-      include:
-        - lambdas/sg_receive_response.py
+          cors: true
+          authorizer: aws_iam
 
-  sg_get_full_response_payload:
-    handler: lambdas/sg_get_full_response_payload.s3_response_bucket_event_handler
-    environment:
-      AWS_S3_BUCKET: sg-raw-store
+  update:
+    # Defines an HTTP API endpoint that calls the main function in update.js
+    # - path: url path is /notes/{id}
+    # - method: PUT request
+    handler: update.main
     events:
-      - s3:
-          bucket: sg-response-stub
-          event: s3:ObjectCreated:*
-          rules:
-            - suffix: .json
-    package:
-      include:
-        - lambdas/sg_get_full_response_payload.py
-        - lambdas/helpers/paginate.py
+      - http:
+          path: notes/{id}
+          method: put
+          cors: true
+          authorizer: aws_iam
 
-  sg_refactor_object_store:
-    handler: lambdas/sg_refactor_object_store.handler
-    environmnet:
-      AWS_S3_BUCKET: sg-normalised-raw-store
+  get:
+    # Defines an HTTP API endpoint that calls the main function in get.js
+    # - path: url path is /notes/{id}
+    # - method: GET request
+    handler: notes.get
     events:
-      - s3:
-          bucket: sg-raw-store
-          event: s3:ObjectCreated:*
-          rules:
-            - suffix: .json
-    #          existing: true
-    package:
-      include:
-        - lambdas/sg_refactor_object_store.py
+      - http:
+          path: notes/{id}
+          method: get
+          cors: true
+          authorizer: aws_iam
 
 resources:
-  Resources:
-    sgNormalisedRawStore:
-      Type: AWS::S3::Bucket
-      Properties:
-        BucketName: sg-normalised-raw-store
-
-    NotesTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        TableName: ${self:custom.tableName}
-        AttributeDefinitions:
-          - AttributeName: userId
-            AttributeType: S
-          - AttributeName: noteId
-            AttributeType: S
-        KeySchema:
-          - AttributeName: userId
-            KeyType: HASH
-          - AttributeName: noteId
-            KeyType: RANGE
-        # Set the capacity to auto-scale
-        BillingMode: PAY_PER_REQUEST
+  # API Gateway Errors
+  - ${file(resources/api-gateway-errors.yml)}
+  # DynamoDB
+  - ${file(resources/dynamodb-table.yml)}
