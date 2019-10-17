@@ -1,4 +1,4 @@
-# Loki - Survey Ingress
+# E-ON push notification PWA demo
 
 ## Testing Lambdas
 
