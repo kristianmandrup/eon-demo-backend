@@ -1,0 +1,82 @@
+service: eon-demo
+
+provider:
+  name: aws
+  runtime: node
+  stage: dev
+  region: eu-west-1
+  role: arn:aws:iam::799405497081:role/dev-lambda-execution-role
+
+package:
+  individually: true
+  exclude:
+    - ".*/**"
+    - "*/**"
+    - "README.md"
+
+functions:
+  sg_receive_response:
+    handler: lambdas/sg_receive_response.handler
+    environment:
+      AWS_S3_BUCKET: sg-response-stub
+    events:
+      - http:
+          path: response
+          method: post
+    package:
+      include:
+        - lambdas/sg_receive_response.py
+
+  sg_get_full_response_payload:
+    handler: lambdas/sg_get_full_response_payload.s3_response_bucket_event_handler
+    environment:
+      AWS_S3_BUCKET: sg-raw-store
+    events:
+      - s3:
+          bucket: sg-response-stub
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .json
+    package:
+      include:
+        - lambdas/sg_get_full_response_payload.py
+        - lambdas/helpers/paginate.py
+
+  sg_refactor_object_store:
+    handler: lambdas/sg_refactor_object_store.handler
+    environmnet:
+      AWS_S3_BUCKET: sg-normalised-raw-store
+    events:
+      - s3:
+          bucket: sg-raw-store
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .json
+    #          existing: true
+    package:
+      include:
+        - lambdas/sg_refactor_object_store.py
+
+resources:
+  Resources:
+    sgNormalisedRawStore:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: sg-normalised-raw-store
+
+    NotesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableName}
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: noteId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: noteId
+            KeyType: RANGE
+        # Set the capacity to auto-scale
+        BillingMode: PAY_PER_REQUEST

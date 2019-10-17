@@ -1,0 +1,21 @@
+# CSV Files
+*.csv
+
+# env file
+.env
+
+# Generated files
+*.json
+
+# venv
+/venv
+
+/.idea
+
+*.pyc
+
+/.serverless
+
+node_modules
+*.temp
+*.tmp
