@@ -1,4 +1,6 @@
-# E-ON push notification PWA demo
+# E-ON serverless backend for AWS
+
+For REST API
 
 ## Serverless
 
